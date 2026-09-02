@@ -9,12 +9,18 @@ from datetime import datetime, timezone
 import logging
 import math
 import os
+from io import BytesIO
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from central_iccc_hub.db import (
     db_session,
@@ -227,6 +233,168 @@ def get_defects() -> Dict[str, Any]:
         cursor = conn.execute("SELECT * FROM defects ORDER BY last_seen_at DESC")
         defects = [dict(row) for row in cursor.fetchall()]
         return {"total": len(defects), "defects": defects}
+
+
+@app.get("/api/v1/defects/{defect_id}/export_work_order")
+def export_work_order_pdf(defect_id: str) -> StreamingResponse:
+    """Generates an official PDF Work Order document for a specific defect record."""
+    with db_session() as conn:
+        defect = get_defect_by_id(conn, defect_id)
+        if not defect:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Defect record '{defect_id}' not found.",
+            )
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=36,
+        rightMargin=36,
+        topMargin=36,
+        bottomMargin=36,
+    )
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "HeaderTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=15,
+        leading=19,
+        textColor=colors.HexColor("#0f172a"),
+        alignment=1,
+    )
+    subtitle_style = ParagraphStyle(
+        "HeaderSubtitle",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=15,
+        textColor=colors.HexColor("#1e40af"),
+        alignment=1,
+    )
+    normal_style = ParagraphStyle(
+        "BodyTextCustom",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9.5,
+        leading=13,
+        textColor=colors.HexColor("#334155"),
+    )
+    clause_style = ParagraphStyle(
+        "ClauseText",
+        parent=styles["Normal"],
+        fontName="Helvetica-Oblique",
+        fontSize=9.0,
+        leading=13,
+        textColor=colors.HexColor("#991b1b"),
+    )
+
+    story = []
+
+    story.append(Paragraph("GOVERNMENT OF NCT OF DELHI - PUBLIC WORKS DEPARTMENT", title_style))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph("MARGDRISHTI AUTOMATED SLA REPAIR WORK ORDER", subtitle_style))
+    story.append(Spacer(1, 10))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#1e40af"), spaceAfter=15))
+
+    wo_number = f"WO-BEL-{defect['id']}"
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    maps_url = f"https://www.google.com/maps?q={defect['lat']},{defect['lng']}"
+    gps_str = f"({defect['lat']}, {defect['lng']})"
+
+    table_data = [
+        [
+            Paragraph("<b>Work Order No:</b>", normal_style),
+            Paragraph(wo_number, normal_style),
+            Paragraph("<b>Date of Issue:</b>", normal_style),
+            Paragraph(date_str, normal_style),
+        ],
+        [
+            Paragraph("<b>Defect Identifier:</b>", normal_style),
+            Paragraph(defect["id"], normal_style),
+            Paragraph("<b>Current Status:</b>", normal_style),
+            Paragraph(defect["status"], normal_style),
+        ],
+        [
+            Paragraph("<b>Bus Node Source:</b>", normal_style),
+            Paragraph(defect["bus_id"], normal_style),
+            Paragraph("<b>Defect Classification:</b>", normal_style),
+            Paragraph(defect["defect_type"].upper(), normal_style),
+        ],
+        [
+            Paragraph("<b>GPS Coordinates:</b>", normal_style),
+            Paragraph(f'<a href="{maps_url}" color="blue"><u>{gps_str}</u></a>', normal_style),
+            Paragraph("<b>Deduplicated Passes:</b>", normal_style),
+            Paragraph(f"{defect['detection_count']} passes", normal_style),
+        ],
+        [
+            Paragraph("<b>Severity Index:</b>", normal_style),
+            Paragraph(f"<b>{defect['severity_score']} / 10.0</b>", normal_style),
+            Paragraph("<b>Vibro-Vision Shock:</b>", normal_style),
+            Paragraph(f"<b>{defect['z_axis_g']} G</b>", normal_style),
+        ],
+    ]
+
+    meta_table = Table(table_data, colWidths=[110, 150, 110, 150])
+    meta_table.setStyle(
+        TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+            ("PADDING", (0, 0), (-1, -1), 6),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ])
+    )
+    story.append(meta_table)
+    story.append(Spacer(1, 15))
+
+    clause_text = (
+        "<b>Notice to Contractor:</b> This defect was detected via autonomous public transit spatial telemetry. "
+        "Repair verification is automated via follow-up bus passes. Failure to restore surface within 72 hours "
+        "invokes liquidated damages under Clause 14-B."
+    )
+    clause_table = Table([[Paragraph(clause_text, clause_style)]], colWidths=[520])
+    clause_table.setStyle(
+        TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fef2f2")),
+            ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#f87171")),
+            ("PADDING", (0, 0), (-1, -1), 10),
+        ])
+    )
+    story.append(clause_table)
+    story.append(Spacer(1, 25))
+
+    sig_data = [
+        [
+            Paragraph(
+                "<b>AUTOMATED SYSTEM STAMP:</b><br/><font color='#166534'>[DIGITALLY SIGNED & VERIFIED BY MARGDRISHTI ICCC ENGINE]</font>",
+                normal_style,
+            ),
+            Paragraph(
+                "<b>EXECUTIVE ENGINEER</b><br/>Public Works Department<br/>Govt. of NCT of Delhi",
+                normal_style,
+            ),
+        ]
+    ]
+    sig_table = Table(sig_data, colWidths=[260, 260])
+    sig_table.setStyle(
+        TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LINEABOVE", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+            ("PADDING", (0, 0), (-1, -1), 8),
+        ])
+    )
+    story.append(sig_table)
+
+    doc.build(story)
+    buffer.seek(0)
+
+    headers = {
+        "Content-Disposition": f'inline; filename="Work_Order_{defect_id}.pdf"'
+    }
+    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
 
 
 @app.post("/api/v1/police/flag_vehicle", status_code=status.HTTP_200_OK)
