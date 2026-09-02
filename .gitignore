@@ -19,3 +19,5 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+bus_edge_node/road_sample.mp4
+*.mp4

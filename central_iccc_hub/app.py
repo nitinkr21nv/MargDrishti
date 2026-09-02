@@ -1,7 +1,8 @@
 """FastAPI Central ICCC Hub Server Application.
 
 Exposes RESTful endpoints for telemetry ingestion, geospatial defect deduplication,
-repair workflow state machines, ANPR police watchlist enforcement, and dashboard rendering.
+repair workflow state machines, ANPR police watchlist enforcement, PDF work order export,
+MJPEG live video streaming, and dashboard rendering.
 """
 
 from contextlib import asynccontextmanager
@@ -460,14 +461,25 @@ def get_police_alerts() -> Dict[str, Any]:
 
 def generate_video_stream():
     """Generates continuous MJPEG video stream with dynamic HUD OSD overlay."""
-    video_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "bus_edge_node",
-        "road_sample.mp4",
-    )
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidate_paths = [
+        os.path.join(base_dir, "bus_edge_node", "road_sample.mp4"),
+        os.path.join(base_dir, "road_sample.mp4"),
+        os.path.join(os.path.expanduser("~"), "Downloads", "road_sample.mp4"),
+    ]
+
+    selected_video_path = None
+    for p in candidate_paths:
+        if os.path.exists(p) and os.path.getsize(p) > 10000:
+            selected_video_path = p
+            break
+
     cap = None
-    if os.path.exists(video_path):
-        cap = cv2.VideoCapture(video_path)
+    if selected_video_path:
+        cap = cv2.VideoCapture(selected_video_path)
+        logger.info(f"Initialized video stream capture from '{selected_video_path}'.")
+    else:
+        logger.warning("No valid 'road_sample.mp4' video found. Utilizing synthetic HUD animation fallback.")
 
     frame_counter = 0
 
@@ -493,7 +505,7 @@ def generate_video_stream():
                 for y in range(50 + offset, 240, 40):
                     cv2.line(frame, (160, y), (160, y + 20), (180, 180, 180), 2)
 
-                # Animated bounding box
+                # Animated bounding box tracking road anomaly
                 box_y = 140 + int(math.sin(frame_counter * 0.2) * 10)
                 cv2.rectangle(frame, (130, box_y), (190, box_y + 30), (255, 229, 0), 2)
                 cv2.putText(
@@ -577,6 +589,8 @@ def serve_dashboard() -> HTMLResponse:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to read dashboard template.",
         )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("central_iccc_hub.app:app", host="0.0.0.0", port=8000, reload=True)
