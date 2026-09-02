@@ -8,6 +8,7 @@
     <!-- Leaflet.js CSS & JS (v1.9.4) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -206,8 +207,12 @@
             </div>
         </div>
 
-        <!-- 4 Live Tactical Metric Cards -->
+        <!-- 4 Live Tactical Metric Cards + Heatmap Toggle -->
         <div class="flex items-center space-x-3 text-xs">
+            <button id="btn-toggle-heatmap" onclick="toggleHeatmapLayer()"
+                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded text-amber-400 border border-amber-500/30 transition-all flex items-center space-x-1.5 shadow-sm">
+                <span>🔥 Toggle Degradation Heatmap</span>
+            </button>
             <div class="bg-[#050814] px-4 py-2 rounded border border-[#1e293b]">
                 <span class="text-slate-400 block text-[10px] uppercase font-sans tracking-wide">Corridor Monitored</span>
                 <span class="font-bold text-[#00e5ff] text-sm">1,420 km</span>
@@ -331,10 +336,30 @@
             className: 'dark-tiles'
         }).addTo(map);
 
-        // Marker caches to prevent map flickering
+        // Marker & Heatmap caches to prevent map flickering
         const defectMarkers = {};
         const anprMarkers = {};
         let currentSelectedDefectId = null;
+
+        let heatLayer = null;
+        let heatmapVisible = false;
+
+        function toggleHeatmapLayer() {
+            heatmapVisible = !heatmapVisible;
+            const btn = document.getElementById('btn-toggle-heatmap');
+
+            if (heatmapVisible) {
+                if (heatLayer) {
+                    heatLayer.addTo(map);
+                }
+                btn.className = "px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-xs font-bold rounded text-amber-300 border border-amber-400 transition-all flex items-center space-x-1.5 shadow-sm shadow-amber-900/30";
+            } else {
+                if (heatLayer) {
+                    map.removeLayer(heatLayer);
+                }
+                btn.className = "px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded text-amber-400 border border-amber-500/30 transition-all flex items-center space-x-1.5 shadow-sm";
+            }
+        }
 
         // Custom Leaflet DivIcons
         function createGlowIcon(statusClass) {
@@ -462,6 +487,27 @@
                 const defectsList = defData.defects || [];
                 const openCount = defectsList.filter(d => d.status === 'OPEN' || d.status === 'SLA_BREACH').length;
                 document.getElementById('stat-hazards').innerText = openCount;
+
+                // Heatmap layer sync
+                const heatPoints = defectsList.map(d => [
+                    d.lat,
+                    d.lng,
+                    Math.min(1.0, (d.severity_score / 10.0) * (d.detection_count * 0.25))
+                ]);
+
+                if (!heatLayer) {
+                    heatLayer = L.heatLayer(heatPoints, {
+                        radius: 28,
+                        blur: 18,
+                        maxZoom: 17,
+                        gradient: { 0.2: '#00e5ff', 0.6: '#f59e0b', 1.0: '#f43f5e' }
+                    });
+                    if (heatmapVisible) {
+                        heatLayer.addTo(map);
+                    }
+                } else {
+                    heatLayer.setLatLngs(heatPoints);
+                }
 
                 defectsList.forEach(d => {
                     const icon = statusIcons[d.status] || statusIcons['OPEN'];
