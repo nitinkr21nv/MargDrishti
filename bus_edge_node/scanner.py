@@ -1,7 +1,7 @@
 """MargDrishti Bus Edge Telematics & Optical Scanner Daemon.
 
 Runs headless on onboard AIS-140 vehicle telematics units and edge NVRs.
-Integrates OpenCV vision, YOLOv8 nano edge inference, Vibro-Vision sensor fusion,
+Integrates local video playback, YOLOv8 nano edge inference, Vibro-Vision sensor fusion,
 GPS corridor traversal, ANPR plate recognition, and local SQLite WAL queue for offline resilience.
 """
 
@@ -75,7 +75,7 @@ class GPSInterpolator:
 
 
 class VisionPipeline:
-    """Manages physical camera stream, YOLOv8 nano edge inference, and synthetic optical frame generation."""
+    """Manages video stream capture from local MP4 video file, YOLOv8 nano edge inference, or synthetic generator."""
 
     def __init__(self, force_synthetic: bool = False):
         self.force_synthetic = force_synthetic
@@ -96,22 +96,40 @@ class VisionPipeline:
             logger.warning("Ultralytics module unavailable. Edge scanner operating in vision fallback mode.")
 
         if not self.force_synthetic:
-            try:
-                self.cap = cv2.VideoCapture(0)
-                if not self.cap.isOpened():
-                    logger.warning("Physical camera unavailable at index 0. Falling back to synthetic vision generator.")
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            candidate_paths = [
+                os.path.join(base_dir, "bus_edge_node", "road_sample.mp4"),
+                os.path.join(base_dir, "road_sample.mp4"),
+                os.path.join(os.path.expanduser("~"), "Downloads", "road_sample.mp4"),
+            ]
+            video_path = None
+            for p in candidate_paths:
+                if os.path.exists(p) and os.path.getsize(p) > 10000:
+                    video_path = p
+                    break
+
+            if video_path:
+                try:
+                    self.cap = cv2.VideoCapture(video_path)
+                    if self.cap.isOpened():
+                        logger.info(f"Loaded edge optics video stream from '{video_path}'.")
+                    else:
+                        self.cap = None
+                except Exception as exc:
+                    logger.warning(f"Failed to open video file ({exc}). Falling back to synthetic generator.")
                     self.cap = None
-                else:
-                    logger.info("Physical optical camera initialized successfully at index 0.")
-            except Exception as exc:
-                logger.warning(f"Camera initialization failed ({exc}). Using synthetic vision generator.")
-                self.cap = None
+            else:
+                logger.info("No physical video file detected. Using synthetic optical generator.")
 
     def capture_frame(self) -> np.ndarray:
-        """Captures optical frame from camera or synthetic generator."""
+        """Captures optical frame from local MP4 video stream or synthetic generator."""
         if self.cap is not None and self.cap.isOpened():
             ret, frame = self.cap.read()
-            if ret and frame is not None:
+            if not ret or frame is None:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = self.cap.read()
+
+            if frame is not None:
                 return frame
 
         return self.generate_synthetic_frame()

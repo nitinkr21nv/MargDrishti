@@ -2,7 +2,7 @@
 
 Exposes RESTful endpoints for telemetry ingestion, geospatial defect deduplication,
 repair workflow state machines, ANPR police watchlist enforcement, PDF work order export,
-MJPEG live video streaming, and dashboard rendering.
+MJPEG live video streaming with YOLOv8 object tracking, and dashboard rendering.
 """
 
 from contextlib import asynccontextmanager
@@ -16,6 +16,12 @@ from typing import Any, Dict, List, Optional
 
 import cv2
 import numpy as np
+
+try:
+    from ultralytics import YOLO
+    hub_yolo_model = YOLO("yolov8n.pt")
+except Exception:
+    hub_yolo_model = None
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -460,7 +466,7 @@ def get_police_alerts() -> Dict[str, Any]:
 
 
 def generate_video_stream():
-    """Generates continuous MJPEG video stream with dynamic HUD OSD overlay."""
+    """Generates continuous MJPEG video stream with real-time YOLOv8 object tracking & OSD header."""
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     candidate_paths = [
         os.path.join(base_dir, "bus_edge_node", "road_sample.mp4"),
@@ -494,52 +500,65 @@ def generate_video_stream():
                     ret, frame = cap.read()
 
                 if frame is not None:
-                    frame = cv2.resize(frame, (320, 240))
+                    frame = cv2.resize(frame, (640, 360))
 
             if frame is None:
                 frame_counter += 1
-                frame = np.full((240, 320, 3), (30, 30, 35), dtype=np.uint8)
+                frame = np.full((360, 640, 3), (30, 30, 35), dtype=np.uint8)
 
-                # Draw moving perspective lane markings
-                offset = (frame_counter * 8) % 40
-                for y in range(50 + offset, 240, 40):
-                    cv2.line(frame, (160, y), (160, y + 20), (180, 180, 180), 2)
+                # Draw perspective lane markings
+                offset = (frame_counter * 12) % 60
+                for y in range(80 + offset, 360, 60):
+                    cv2.line(frame, (320, y), (320, y + 30), (180, 180, 180), 2)
 
-                # Animated bounding box tracking road anomaly
-                box_y = 140 + int(math.sin(frame_counter * 0.2) * 10)
-                cv2.rectangle(frame, (130, box_y), (190, box_y + 30), (255, 229, 0), 2)
+                # Animated bounding box
+                box_y = 210 + int(math.sin(frame_counter * 0.2) * 15)
+                cv2.rectangle(frame, (260, box_y), (380, box_y + 45), (255, 229, 0), 2)
                 cv2.putText(
                     frame,
                     "POTHOLE (CONF: 0.94)",
-                    (110, box_y - 6),
+                    (240, box_y - 8),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.35,
+                    0.45,
                     (255, 229, 0),
                     1,
                 )
             else:
-                frame_counter += 1
-                box_y = 140 + int(math.sin(frame_counter * 0.2) * 10)
-                cv2.rectangle(frame, (130, box_y), (190, box_y + 30), (255, 229, 0), 2)
-                cv2.putText(
-                    frame,
-                    "POTHOLE (CONF: 0.94)",
-                    (110, box_y - 6),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.35,
-                    (255, 229, 0),
-                    1,
-                )
+                # Real YOLOv8 Object Tracking
+                if hub_yolo_model is not None:
+                    try:
+                        results = hub_yolo_model(frame, imgsz=320, verbose=False, device="cpu")
+                        if results and len(results) > 0 and results[0].boxes is not None:
+                            boxes = results[0].boxes
+                            for box in boxes:
+                                conf = float(box.conf[0].cpu().item()) if hasattr(box.conf, "cpu") else float(box.conf[0])
+                                cls_id = int(box.cls[0].cpu().item()) if hasattr(box.cls, "cpu") else int(box.cls[0])
+                                class_name = hub_yolo_model.names.get(cls_id, "object")
 
-            # Header HUD text (Emerald #10b981 -> BGR: (129, 185, 16))
+                                if conf >= 0.35:
+                                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 229, 0), 2)
+                                    cv2.putText(
+                                        frame,
+                                        f"{class_name.upper()} ({conf:.2f})",
+                                        (x1, max(20, y1 - 8)),
+                                        cv2.FONT_HERSHEY_SIMPLEX,
+                                        0.45,
+                                        (255, 229, 0),
+                                        1,
+                                    )
+                    except Exception as exc:
+                        logger.warning(f"Hub YOLOv8 stream inference error: {exc}")
+
+            # Draw Emerald Live OSD Header Stamp
             time_str = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
             osd_header = f"CAM-01 // BUS-104 | {time_str}"
             cv2.putText(
                 frame,
                 osd_header,
-                (10, 18),
+                (12, 24),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.35,
+                0.45,
                 (129, 185, 16),
                 1,
             )
@@ -553,7 +572,7 @@ def generate_video_stream():
                 b"--frame\r\n"
                 b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
             )
-            time.sleep(0.06)
+            time.sleep(0.05)
     finally:
         if cap is not None:
             cap.release()
