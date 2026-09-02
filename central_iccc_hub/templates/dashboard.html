@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MargDrishti // Multi-Agency ICCC Command Portal</title>
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #map {
+            height: calc(100vh - 76px);
+            width: 100%;
+        }
+
+        .dark-tiles {
+            filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+        }
+    </style>
+</head>
+
+<body class="bg-slate-950 text-slate-100 font-mono overflow-hidden">
+    <!-- Top Command & Metric Bar -->
+    <header class="h-[76px] bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-400 animate-ping"></div>
+            <div>
+                <h1 class="text-base font-bold tracking-wider text-cyan-400">MARGDRISHTI ICCC // CENTRAL COMMAND ENGINE
+                </h1>
+                <p class="text-xs text-slate-400">Bharat Electronics Limited • Dual-Agency Urban Telemetry Hub</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4 text-xs">
+            <div class="bg-slate-950 px-3 py-1.5 rounded border border-slate-800">
+                <span class="text-slate-400 block text-[10px] uppercase">Corridor Monitored</span>
+                <span class="font-bold text-cyan-400">1,420 km</span>
+            </div>
+            <div class="bg-slate-950 px-3 py-1.5 rounded border border-slate-800">
+                <span class="text-slate-400 block text-[10px] uppercase">Active Bus Fleet</span>
+                <span class="font-bold text-emerald-400">48 Online</span>
+            </div>
+            <div class="bg-slate-950 px-3 py-1.5 rounded border border-slate-800">
+                <span class="text-slate-400 block text-[10px] uppercase">Open Hazards</span>
+                <span id="stat-hazards" class="font-bold text-rose-400">0</span>
+            </div>
+            <div class="bg-slate-950 px-3 py-1.5 rounded border border-slate-800">
+                <span class="text-slate-400 block text-[10px] uppercase">SLA Compliance</span>
+                <span class="font-bold text-amber-400">94.2%</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Viewport -->
+    <div class="flex h-[calc(100vh-76px)]">
+        <!-- 75% GIS Leaflet Map -->
+        <div class="w-3/4 bg-slate-950">
+            <div id="map"></div>
+        </div>
+
+        <!-- 25% Side Tactical Drawer -->
+        <div class="w-1/4 bg-slate-900 border-l border-slate-800 p-4 flex flex-col justify-between overflow-y-auto">
+            <div class="space-y-4">
+                <!-- Agency Switcher -->
+                <div class="flex border-b border-slate-800 text-xs font-bold">
+                    <button id="tab-pwd" onclick="switchAgencyTab('pwd')"
+                        class="flex-1 py-2 text-cyan-400 border-b-2 border-cyan-400">
+                        PWD / Municipal
+                    </button>
+                    <button id="tab-police" onclick="switchAgencyTab('police')"
+                        class="flex-1 py-2 text-slate-400 hover:text-white">
+                        Police / ANPR
+                    </button>
+                </div>
+
+                <!-- Municipal View -->
+                <div id="view-pwd" class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs uppercase text-slate-400 font-bold tracking-wider">Defect Inspector</span>
+                        <span class="text-[10px] text-slate-500">Haversine 5m</span>
+                    </div>
+                    <div id="defect-card"
+                        class="bg-slate-950 border border-slate-800 p-3 rounded text-xs space-y-2 text-slate-400">
+                        <p class="italic text-slate-500">Click any marker on the map to inspect telemetry, Vibro-Vision
+                            G-shock, and contractor SLA status.</p>
+                    </div>
+                </div>
+
+                <!-- Police View -->
+                <div id="view-police" class="hidden space-y-3">
+                    <span class="text-xs uppercase text-slate-400 font-bold tracking-wider block">Broadcast Suspect
+                        Plate</span>
+                    <div class="bg-slate-950 border border-slate-800 p-3 rounded text-xs space-y-2">
+                        <input id="anpr-plate" type="text" placeholder="LICENSE PLATE (e.g. DL-01-A-4821)"
+                            class="w-full bg-slate-900 border border-slate-700 px-2 py-1.5 rounded text-white text-xs uppercase focus:outline-none focus:border-purple-500" />
+                        <input id="anpr-reason" type="text" placeholder="INCIDENT (e.g. Hit & Run)"
+                            class="w-full bg-slate-900 border border-slate-700 px-2 py-1.5 rounded text-white text-xs focus:outline-none focus:border-purple-500" />
+                        <button onclick="broadcastPlateAlert()"
+                            class="w-full py-1.5 bg-purple-600 hover:bg-purple-500 font-bold rounded text-white">
+                            🚨 Broadcast Alert to Fleet
+                        </button>
+                    </div>
+                    <span class="text-xs uppercase text-slate-400 font-bold tracking-wider block mt-4">Active
+                        Watchlist</span>
+                    <div id="anpr-list" class="space-y-2 text-xs">
+                        <p class="text-slate-500 text-[11px] italic">No active search warrants registered.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-[10px] text-slate-500 text-center border-t border-slate-800 pt-3">
+                © 2026 BHARAT ELECTRONICS LIMITED
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Controller -->
+    <script>
+        const map = L.map('map').setView([28.6139, 77.2090], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            className: 'dark-tiles'
+        }).addTo(map);
+
+        const defectMarkers = {};
+
+        function switchAgencyTab(tab) {
+            const pwdView = document.getElementById('view-pwd');
+            const policeView = document.getElementById('view-police');
+            const pwdTab = document.getElementById('tab-pwd');
+            const policeTab = document.getElementById('tab-police');
+
+            if (tab === 'pwd') {
+                pwdView.classList.remove('hidden');
+                policeView.classList.add('hidden');
+                pwdTab.className = "flex-1 py-2 text-cyan-400 border-b-2 border-cyan-400";
+                policeTab.className = "flex-1 py-2 text-slate-400 hover:text-white";
+            } else {
+                pwdView.classList.add('hidden');
+                policeView.classList.remove('hidden');
+                policeTab.className = "flex-1 py-2 text-purple-400 border-b-2 border-purple-400";
+                pwdTab.className = "flex-1 py-2 text-slate-400 hover:text-white";
+            }
+        }
+
+        async function syncHubData() {
+            try {
+                const res = await fetch('/api/v1/defects');
+                const data = await res.json();
+                document.getElementById('stat-hazards').innerText = data.total || 0;
+
+                (data.defects || []).forEach(d => {
+                    let color = '#f43f5e';
+                    if (d.status === 'AUDIT_PENDING') color = '#f59e0b';
+                    if (d.status === 'VERIFIED_FIXED') color = '#10b981';
+                    if (d.status === 'SLA_BREACH') color = '#a855f7';
+
+                    if (!defectMarkers[d.id]) {
+                        const marker = L.circleMarker([d.lat, d.lng], {
+                            radius: 9,
+                            fillColor: color,
+                            color: '#ffffff',
+                            weight: 1.5,
+                            fillOpacity: 0.9
+                        }).addTo(map);
+
+                        marker.on('click', () => {
+                            document.getElementById('defect-card').innerHTML = `
+                                <div class="space-y-1.5 text-white">
+                                    <div class="flex justify-between items-center border-b border-slate-800 pb-1">
+                                        <span class="font-bold text-cyan-400">${d.id}</span>
+                                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800">${d.status}</span>
+                                    </div>
+                                    <p><b>Type:</b> ${d.defect_type}</p>
+                                    <p><b>Severity Score:</b> ${d.severity_score} / 10</p>
+                                    <p><b>Vibro-Vision Shock:</b> ${d.z_axis_g} G</p>
+                                    <p><b>Deduplicated Passes:</b> ${d.detection_count}</p>
+                                    <div class="pt-2 space-y-1.5">
+                                        <button onclick="markRepaired('${d.id}')" class="w-full py-1.5 bg-amber-600 hover:bg-amber-500 font-bold rounded text-white text-xs">
+                                            ⚠️ Mark Repaired (Audit Watch)
+                                        </button>
+                                        <button onclick="verifyManual('${d.id}')" class="w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 font-bold rounded text-white text-xs">
+                                            ✔ Verify & Release Escrow
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        defectMarkers[d.id] = marker;
+                    } else {
+                        defectMarkers[d.id].setStyle({ fillColor: color });
+                    }
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function markRepaired(id) {
+            await fetch('/api/v1/defects/' + id + '/mark_repaired', { method: 'POST' });
+            syncHubData();
+        }
+
+        async function verifyManual(id) {
+            await fetch('/api/v1/defects/' + id + '/verify_manual', { method: 'POST' });
+            syncHubData();
+        }
+
+        async function broadcastPlateAlert() {
+            const plate = document.getElementById('anpr-plate').value.trim();
+            const reason = document.getElementById('anpr-reason').value.trim();
+            if (!plate) return;
+
+            await fetch('/api/v1/police/flag_vehicle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plate_number: plate, incident_type: reason || 'Suspect Vehicle' })
+            });
+            document.getElementById('anpr-plate').value = '';
+            document.getElementById('anpr-reason').value = '';
+            syncHubData();
+        }
+
+        setInterval(syncHubData, 2000);
+        syncHubData();
+    </script>
+</body>
+
+</html>
