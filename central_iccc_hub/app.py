@@ -6,11 +6,15 @@ repair workflow state machines, ANPR police watchlist enforcement, and dashboard
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from io import BytesIO
 import logging
 import math
 import os
-from io import BytesIO
+import time
 from typing import Any, Dict, List, Optional
+
+import cv2
+import numpy as np
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -452,6 +456,104 @@ def get_police_alerts() -> Dict[str, Any]:
     with db_session() as conn:
         alerts = list_anpr_alerts(conn)
         return {"total": len(alerts), "alerts": alerts}
+
+
+def generate_video_stream():
+    """Generates continuous MJPEG video stream with dynamic HUD OSD overlay."""
+    video_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "bus_edge_node",
+        "road_sample.mp4",
+    )
+    cap = None
+    if os.path.exists(video_path):
+        cap = cv2.VideoCapture(video_path)
+
+    frame_counter = 0
+
+    try:
+        while True:
+            frame = None
+
+            if cap is not None and cap.isOpened():
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = cap.read()
+
+                if frame is not None:
+                    frame = cv2.resize(frame, (320, 240))
+
+            if frame is None:
+                frame_counter += 1
+                frame = np.full((240, 320, 3), (30, 30, 35), dtype=np.uint8)
+
+                # Draw moving perspective lane markings
+                offset = (frame_counter * 8) % 40
+                for y in range(50 + offset, 240, 40):
+                    cv2.line(frame, (160, y), (160, y + 20), (180, 180, 180), 2)
+
+                # Animated bounding box
+                box_y = 140 + int(math.sin(frame_counter * 0.2) * 10)
+                cv2.rectangle(frame, (130, box_y), (190, box_y + 30), (255, 229, 0), 2)
+                cv2.putText(
+                    frame,
+                    "POTHOLE (CONF: 0.94)",
+                    (110, box_y - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.35,
+                    (255, 229, 0),
+                    1,
+                )
+            else:
+                frame_counter += 1
+                box_y = 140 + int(math.sin(frame_counter * 0.2) * 10)
+                cv2.rectangle(frame, (130, box_y), (190, box_y + 30), (255, 229, 0), 2)
+                cv2.putText(
+                    frame,
+                    "POTHOLE (CONF: 0.94)",
+                    (110, box_y - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.35,
+                    (255, 229, 0),
+                    1,
+                )
+
+            # Header HUD text (Emerald #10b981 -> BGR: (129, 185, 16))
+            time_str = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+            osd_header = f"CAM-01 // BUS-104 | {time_str}"
+            cv2.putText(
+                frame,
+                osd_header,
+                (10, 18),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.35,
+                (129, 185, 16),
+                1,
+            )
+
+            ret, jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            if not ret:
+                continue
+
+            frame_bytes = jpeg.tobytes()
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+            )
+            time.sleep(0.06)
+    finally:
+        if cap is not None:
+            cap.release()
+
+
+@app.get("/api/v1/video/stream")
+def get_video_stream() -> StreamingResponse:
+    """Streams live MJPEG camera feed with real-time HUD OSD overlays."""
+    return StreamingResponse(
+        generate_video_stream(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
 
 
 @app.get("/", response_class=HTMLResponse)

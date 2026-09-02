@@ -233,6 +233,22 @@
         <!-- Map Viewport (75% width) -->
         <div class="w-3/4 h-full bg-[#050814] relative">
             <div id="map"></div>
+
+            <!-- Floating PIP Edge Camera Stream HUD Widget -->
+            <div class="absolute bottom-5 left-5 z-[1000] w-[280px] bg-[#0b1120] border border-[#1e293b] rounded-lg shadow-2xl overflow-hidden font-mono">
+                <div class="px-3 py-2 bg-[#050814] border-b border-[#1e293b] flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-2 h-2 rounded-full bg-[#10b981] animate-ping"></div>
+                        <span class="text-[10px] font-bold tracking-wider text-slate-300">LIVE EDGE OPTICS</span>
+                    </div>
+                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/60 text-[#00e5ff]">
+                        BUS-104
+                    </span>
+                </div>
+                <div class="relative bg-black h-[180px]">
+                    <img src="/api/v1/video/stream" class="w-full h-full object-cover" alt="Live Telemetry Feed" />
+                </div>
+            </div>
         </div>
 
         <!-- Tactical Drawer (25% width) -->
