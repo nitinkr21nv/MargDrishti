@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import logging
 import math
 import os
+import random
 import sys
 import threading
 import time
@@ -181,7 +182,7 @@ class VisionPipeline:
                             else:
                                 best_label = "surface_wear"
 
-                if best_conf >= 0.5:
+                if best_conf > 0.0:
                     return {
                         "defect_type": best_label,
                         "confidence": round(best_conf, 2),
@@ -189,8 +190,8 @@ class VisionPipeline:
             except Exception as exc:
                 logger.warning(f"YOLOv8 inference error ({exc}). Utilizing calibrated detection baseline.")
 
-        # Baseline calibrated detection object when no objects meet threshold or model is unavailable
-        return {"defect_type": "pothole", "confidence": 0.92}
+        # Baseline detection object when model is unavailable or no objects detected
+        return {"defect_type": "pothole", "confidence": 0.45}
 
     def release(self) -> None:
         """Releases video capture hardware resources."""
@@ -206,7 +207,7 @@ def process_vibro_vision_fusion(
         return True, "VERIFIED_HAZARD"
     elif confidence >= 0.85 and z_axis_g < 1.2:
         return False, "VIBRO_REJECTED"
-    elif confidence >= 0.80 and z_axis_g >= 1.4:
+    elif confidence >= 0.65 and z_axis_g >= 1.4:
         return True, "VERIFIED_HAZARD"
     else:
         return False, "LOW_CONFIDENCE_REJECTED"
@@ -314,7 +315,6 @@ def main() -> None:
     gps = GPSInterpolator(DELHI_WAYPOINTS, steps_per_segment=8)
 
     cycle_count = 0
-    last_reported_coord = None
 
     try:
         while True:
@@ -322,38 +322,8 @@ def main() -> None:
             lat, lng = gps.get_next_coordinate()
             frame = vision.capture_frame()
 
-            # Cycle event generation pattern
-            event_type = cycle_count % 5
-
-            if event_type == 0:
-                # Real pothole (High optical confidence, high Z-axis shock)
-                ai_result = vision.detect_road_defect(frame)
-                defect_type = ai_result.get("defect_type", "pothole")
-                confidence = ai_result.get("confidence", 0.94)
-                z_axis_g = 2.2
-                last_reported_coord = (lat, lng)
-            elif event_type == 1:
-                # Shadow / surface stain false positive (High optical confidence, low Z-axis shock)
-                ai_result = vision.detect_road_defect(frame)
-                defect_type = ai_result.get("defect_type", "pothole")
-                confidence = 0.88
-                z_axis_g = 1.05
-            elif event_type == 2:
-                # Curbside cracking hazard (High optical confidence, moderate shock)
-                ai_result = vision.detect_road_defect(frame)
-                defect_type = "cracking"
-                confidence = ai_result.get("confidence", 0.87)
-                z_axis_g = 1.65
-            elif event_type == 3:
-                # Deduplicated pass over previous pothole coordinates
-                ai_result = vision.detect_road_defect(frame)
-                defect_type = "pothole"
-                confidence = ai_result.get("confidence", 0.91)
-                z_axis_g = 2.0
-                if last_reported_coord:
-                    lat, lng = last_reported_coord
-            else:
-                # Periodic ANPR license plate sighting (Target vehicle DL-01-A-4821)
+            # ANPR license plate sighting dispatch every 8 cycles
+            if cycle_count % 8 == 0:
                 anpr_payload = {
                     "bus_id": args.bus_id,
                     "plate_number": "DL-01-A-4821",
@@ -365,18 +335,29 @@ def main() -> None:
                 time.sleep(args.interval)
                 continue
 
+            # Real-time YOLOv8 optical inference
+            ai_result = vision.detect_road_defect(frame)
+            defect_type = ai_result.get("defect_type", "pothole")
+            confidence = ai_result.get("confidence", 0.0)
+
+            # Bind optical confidence dynamically to suspension shock G-force
+            if confidence < 0.60:
+                z_axis_g = round(random.uniform(0.95, 1.15), 2)
+            else:
+                z_axis_g = round(random.uniform(1.60, 2.30), 2)
+
             # Process Vibro-Vision Sensor Fusion
             should_transmit, reason = process_vibro_vision_fusion(defect_type, confidence, z_axis_g)
 
             if not should_transmit:
                 logger.info(
-                    f"[VIBRO_REJECTED: False positive discarded] Type: {defect_type}, "
-                    f"Conf: {confidence}, Shock: {z_axis_g}G (Reason: {reason})"
+                    f"[SURFACE_CLEAR] Nominal road conditions at ({lat}, {lng}). "
+                    f"Type: {defect_type}, Conf: {confidence}, Shock: {z_axis_g}G (Filter: {reason})"
                 )
             else:
                 logger.info(
-                    f"[VERIFIED_HAZARD] Type: {defect_type}, Conf: {confidence}, "
-                    f"Shock: {z_axis_g}G at ({lat}, {lng})"
+                    f"[VERIFIED_HAZARD] Confirmed road defect at ({lat}, {lng})! "
+                    f"Type: {defect_type}, Conf: {confidence}, Shock: {z_axis_g}G"
                 )
                 payload = {
                     "bus_id": args.bus_id,
