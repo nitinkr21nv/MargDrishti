@@ -1,131 +1,352 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MargDrishti // Multi-Agency ICCC Command Portal</title>
-    <!-- Leaflet CSS & JS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <title>MARGDRISHTI ICCC // Central Command Engine</title>
+    
+    <!-- Leaflet.js CSS & JS (v1.9.4) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        navy: {
+                            950: '#050814',
+                            900: '#0b1120',
+                            800: '#11192e',
+                            700: '#1e293b',
+                        },
+                        cyber: {
+                            cyan: '#00e5ff',
+                            emerald: '#10b981',
+                            rose: '#f43f5e',
+                            amber: '#f59e0b',
+                            purple: '#a855f7',
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'monospace'],
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    
     <style>
-        #map {
-            height: calc(100vh - 76px);
-            width: 100%;
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
 
+        body, html {
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            background-color: #050814;
+            color: #f1f5f9;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        #map {
+            height: calc(100vh - 72px);
+            width: 100%;
+            background-color: #050814;
+        }
+
+        /* Leaflet Dark Map Tile Filter */
         .dark-tiles {
             filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
         }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b1120;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #334155;
+        }
+
+        /* Pulsing Radar Dot */
+        .radar-dot {
+            width: 10px;
+            height: 10px;
+            background-color: #00e5ff;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #00e5ff;
+            position: relative;
+        }
+        .radar-dot::after {
+            content: '';
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #00e5ff;
+            border-radius: 50%;
+            animation: radarPulse 2s infinite ease-out;
+        }
+        @keyframes radarPulse {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(1.8); opacity: 0; }
+        }
+
+        /* Marker Glow Styles */
+        .glow-open {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: #f43f5e;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 12px #f43f5e, 0 0 20px #f43f5e;
+        }
+        .glow-pending {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: #f59e0b;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 12px #f59e0b, 0 0 20px #f59e0b;
+        }
+        .glow-fixed {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: #10b981;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 12px #10b981, 0 0 20px #10b981;
+        }
+        .glow-breach {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: #a855f7;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 12px #a855f7, 0 0 20px #a855f7;
+        }
+
+        /* ANPR Target Marker */
+        .target-container {
+            width: 30px;
+            height: 30px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .target-dot {
+            width: 12px;
+            height: 12px;
+            background-color: #a855f7;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 0 14px #a855f7;
+            z-index: 2;
+        }
+        .target-ring {
+            width: 28px;
+            height: 28px;
+            border: 2px solid #a855f7;
+            border-radius: 50%;
+            position: absolute;
+            animation: targetPulse 1.5s infinite ease-out;
+        }
+        @keyframes targetPulse {
+            0% { transform: scale(0.6); opacity: 1; }
+            100% { transform: scale(2.2); opacity: 0; }
+        }
+
+        /* Leaflet Dark Popup Customization */
+        .leaflet-popup-content-wrapper {
+            background: #0b1120 !important;
+            color: #f1f5f9 !important;
+            border: 1px solid #1e293b !important;
+            border-radius: 6px !important;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.8) !important;
+            padding: 4px !important;
+        }
+        .leaflet-popup-tip {
+            background: #0b1120 !important;
+            border: 1px solid #1e293b !important;
+        }
     </style>
 </head>
+<body class="bg-[#050814] text-slate-100 font-mono overflow-hidden">
 
-<body class="bg-slate-950 text-slate-100 font-mono overflow-hidden">
-    <!-- Top Command & Metric Bar -->
-    <header class="h-[76px] bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-            <div class="w-3 h-3 rounded-full bg-cyan-400 animate-ping"></div>
+    <!-- Top Command & Metric Bar (72px) -->
+    <header class="h-[72px] bg-[#0b1120] border-b border-[#1e293b] px-6 flex items-center justify-between z-10 relative">
+        <!-- Brand Badge -->
+        <div class="flex items-center space-x-4">
+            <div class="radar-dot"></div>
             <div>
-                <h1 class="text-base font-bold tracking-wider text-cyan-400">MARGDRISHTI ICCC // CENTRAL COMMAND ENGINE
+                <h1 class="text-sm md:text-base font-extrabold tracking-wider text-[#00e5ff] uppercase">
+                    MARGDRISHTI ICCC // CENTRAL COMMAND HUB
                 </h1>
-                <p class="text-xs text-slate-400">Bharat Electronics Limited • Dual-Agency Urban Telemetry Hub</p>
+                <p class="text-[11px] text-slate-400 font-sans">Bharat Electronics Limited • Dual-Agency Urban Telemetry</p>
             </div>
         </div>
-        <div class="flex items-center space-x-4 text-xs">
-            <div class="bg-slate-950 px-3 py-1.5 rounded border border-slate-800">
-                <span class="text-slate-400 block text-[10px] uppercase">Corridor Monitored</span>
-                <span class="font-bold text-cyan-400">1,420 km</span>
+
+        <!-- 4 Live Tactical Metric Cards -->
+        <div class="flex items-center space-x-3 text-xs">
+            <div class="bg-[#050814] px-4 py-2 rounded border border-[#1e293b]">
+                <span class="text-slate-400 block text-[10px] uppercase font-sans tracking-wide">Corridor Monitored</span>
+                <span class="font-bold text-[#00e5ff] text-sm">1,420 km</span>
             </div>
-            <div class="bg-slate-950 px-3 py-1.5 rounded border border-slate-800">
-                <span class="text-slate-400 block text-[10px] uppercase">Active Bus Fleet</span>
-                <span class="font-bold text-emerald-400">48 Online</span>
+            <div class="bg-[#050814] px-4 py-2 rounded border border-[#1e293b]">
+                <span class="text-slate-400 block text-[10px] uppercase font-sans tracking-wide">Active Fleet</span>
+                <span class="font-bold text-[#10b981] text-sm">48 Online</span>
             </div>
-            <div class="bg-slate-950 px-3 py-1.5 rounded border border-slate-800">
-                <span class="text-slate-400 block text-[10px] uppercase">Open Hazards</span>
-                <span id="stat-hazards" class="font-bold text-rose-400">0</span>
+            <div class="bg-[#050814] px-4 py-2 rounded border border-[#1e293b]">
+                <span class="text-slate-400 block text-[10px] uppercase font-sans tracking-wide">Open Road Hazards</span>
+                <span id="stat-hazards" class="font-bold text-[#f43f5e] text-sm">0</span>
             </div>
-            <div class="bg-slate-950 px-3 py-1.5 rounded border border-slate-800">
-                <span class="text-slate-400 block text-[10px] uppercase">SLA Compliance</span>
-                <span class="font-bold text-amber-400">94.2%</span>
+            <div class="bg-[#050814] px-4 py-2 rounded border border-[#1e293b]">
+                <span class="text-slate-400 block text-[10px] uppercase font-sans tracking-wide">SLA Compliance</span>
+                <span class="font-bold text-[#f59e0b] text-sm">94.2%</span>
             </div>
         </div>
     </header>
 
-    <!-- Main Viewport -->
-    <div class="flex h-[calc(100vh-76px)]">
-        <!-- 75% GIS Leaflet Map -->
-        <div class="w-3/4 bg-slate-950">
+    <!-- Main Workspace Split-Screen -->
+    <div class="flex h-[calc(100vh-72px)] w-full">
+        
+        <!-- Map Viewport (75% width) -->
+        <div class="w-3/4 h-full bg-[#050814] relative">
             <div id="map"></div>
         </div>
 
-        <!-- 25% Side Tactical Drawer -->
-        <div class="w-1/4 bg-slate-900 border-l border-slate-800 p-4 flex flex-col justify-between overflow-y-auto">
+        <!-- Tactical Drawer (25% width) -->
+        <div class="w-1/4 h-full bg-[#0b1120] border-l border-[#1e293b] p-4 flex flex-col justify-between overflow-y-auto">
             <div class="space-y-4">
-                <!-- Agency Switcher -->
-                <div class="flex border-b border-slate-800 text-xs font-bold">
+                
+                <!-- Agency Switcher Tabs -->
+                <div class="flex border-b border-[#1e293b] text-xs font-bold">
                     <button id="tab-pwd" onclick="switchAgencyTab('pwd')"
-                        class="flex-1 py-2 text-cyan-400 border-b-2 border-cyan-400">
+                        class="flex-1 py-2.5 text-[#00e5ff] border-b-2 border-[#00e5ff] transition-all">
                         PWD / Municipal
                     </button>
                     <button id="tab-police" onclick="switchAgencyTab('police')"
-                        class="flex-1 py-2 text-slate-400 hover:text-white">
+                        class="flex-1 py-2.5 text-slate-400 hover:text-white transition-all">
                         Police / ANPR
                     </button>
                 </div>
 
-                <!-- Municipal View -->
-                <div id="view-pwd" class="space-y-3">
+                <!-- PWD / Municipal View -->
+                <div id="view-pwd" class="space-y-4">
                     <div class="flex justify-between items-center">
-                        <span class="text-xs uppercase text-slate-400 font-bold tracking-wider">Defect Inspector</span>
-                        <span class="text-[10px] text-slate-500">Haversine 5m</span>
+                        <span class="text-xs uppercase text-slate-400 font-bold tracking-wider">Defect Inspection Card</span>
+                        <span class="text-[10px] text-slate-500 font-sans">Haversine 5.0m Radius</span>
                     </div>
-                    <div id="defect-card"
-                        class="bg-slate-950 border border-slate-800 p-3 rounded text-xs space-y-2 text-slate-400">
-                        <p class="italic text-slate-500">Click any marker on the map to inspect telemetry, Vibro-Vision
-                            G-shock, and contractor SLA status.</p>
+
+                    <div id="defect-card" class="bg-[#050814] border border-[#1e293b] p-4 rounded text-xs space-y-3">
+                        <p class="italic text-slate-500 text-center py-6 font-sans">
+                            Click any marker on the map to inspect telemetry, Vibro-Vision G-shock, and contractor SLA status.
+                        </p>
                     </div>
                 </div>
 
-                <!-- Police View -->
-                <div id="view-police" class="hidden space-y-3">
-                    <span class="text-xs uppercase text-slate-400 font-bold tracking-wider block">Broadcast Suspect
-                        Plate</span>
-                    <div class="bg-slate-950 border border-slate-800 p-3 rounded text-xs space-y-2">
-                        <input id="anpr-plate" type="text" placeholder="LICENSE PLATE (e.g. DL-01-A-4821)"
-                            class="w-full bg-slate-900 border border-slate-700 px-2 py-1.5 rounded text-white text-xs uppercase focus:outline-none focus:border-purple-500" />
-                        <input id="anpr-reason" type="text" placeholder="INCIDENT (e.g. Hit & Run)"
-                            class="w-full bg-slate-900 border border-slate-700 px-2 py-1.5 rounded text-white text-xs focus:outline-none focus:border-purple-500" />
+                <!-- Police / ANPR View -->
+                <div id="view-police" class="hidden space-y-4">
+                    <span class="text-xs uppercase text-slate-400 font-bold tracking-wider block">Search Warrant Broadcast</span>
+                    
+                    <div class="bg-[#050814] border border-[#1e293b] p-3 rounded text-xs space-y-3">
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-1 font-sans">Target Vehicle License Plate</label>
+                            <input id="anpr-plate" type="text" placeholder="e.g. DL01AB1234"
+                                class="w-full bg-[#0b1120] border border-[#1e293b] px-3 py-2 rounded text-white text-xs font-mono uppercase focus:outline-none focus:border-[#a855f7]" />
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-1 font-sans">Incident / Warrant Type</label>
+                            <input id="anpr-reason" type="text" placeholder="e.g. Hit & Run / Stolen"
+                                class="w-full bg-[#0b1120] border border-[#1e293b] px-3 py-2 rounded text-white text-xs font-mono focus:outline-none focus:border-[#a855f7]" />
+                        </div>
                         <button onclick="broadcastPlateAlert()"
-                            class="w-full py-1.5 bg-purple-600 hover:bg-purple-500 font-bold rounded text-white">
+                            class="w-full py-2 bg-[#a855f7] hover:bg-purple-600 font-bold rounded text-white text-xs transition-colors shadow-lg shadow-purple-900/30">
                             🚨 Broadcast Alert to Fleet
                         </button>
                     </div>
-                    <span class="text-xs uppercase text-slate-400 font-bold tracking-wider block mt-4">Active
-                        Watchlist</span>
-                    <div id="anpr-list" class="space-y-2 text-xs">
-                        <p class="text-slate-500 text-[11px] italic">No active search warrants registered.</p>
+
+                    <span class="text-xs uppercase text-slate-400 font-bold tracking-wider block mt-4">Active Watchlist Log</span>
+                    <div id="anpr-list" class="space-y-2 text-xs max-h-[350px] overflow-y-auto pr-1">
+                        <p class="text-slate-500 text-[11px] italic font-sans">No active search warrants registered.</p>
                     </div>
                 </div>
+
             </div>
 
-            <div class="text-[10px] text-slate-500 text-center border-t border-slate-800 pt-3">
-                © 2026 BHARAT ELECTRONICS LIMITED
+            <!-- Footer -->
+            <div class="text-[10px] text-slate-500 text-center border-t border-[#1e293b] pt-3 font-sans">
+                © 2026 BHARAT ELECTRONICS LIMITED • BEL-ICCC SYSTEM v1.0
             </div>
         </div>
     </div>
 
-    <!-- Script Controller -->
+    <!-- Live Engine Controller Script -->
     <script>
-        const map = L.map('map').setView([28.6139, 77.2090], 14);
+        // Initialize Leaflet Map centered on New Delhi Smart Corridor
+        const map = L.map('map', {
+            zoomControl: true,
+            attributionControl: false
+        }).setView([28.6139, 77.2090], 14);
+
+        // OpenStreetMap raster tiles with custom dark mode CSS filters
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             className: 'dark-tiles'
         }).addTo(map);
 
+        // Marker caches to prevent map flickering
         const defectMarkers = {};
+        const anprMarkers = {};
+        let currentSelectedDefectId = null;
 
+        // Custom Leaflet DivIcons
+        function createGlowIcon(statusClass) {
+            return L.divIcon({
+                className: 'custom-glow-icon',
+                html: `<div class="${statusClass}"></div>`,
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
+            });
+        }
+
+        function createTargetIcon() {
+            return L.divIcon({
+                className: 'custom-target-icon',
+                html: `<div class="target-container"><div class="target-ring"></div><div class="target-dot"></div></div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+        }
+
+        const statusIcons = {
+            'OPEN': createGlowIcon('glow-open'),
+            'AUDIT_PENDING': createGlowIcon('glow-pending'),
+            'VERIFIED_FIXED': createGlowIcon('glow-fixed'),
+            'SLA_BREACH': createGlowIcon('glow-breach')
+        };
+
+        // Agency Switcher Tab Handler
         function switchAgencyTab(tab) {
             const pwdView = document.getElementById('view-pwd');
             const policeView = document.getElementById('view-police');
@@ -135,97 +356,227 @@
             if (tab === 'pwd') {
                 pwdView.classList.remove('hidden');
                 policeView.classList.add('hidden');
-                pwdTab.className = "flex-1 py-2 text-cyan-400 border-b-2 border-cyan-400";
-                policeTab.className = "flex-1 py-2 text-slate-400 hover:text-white";
+                pwdTab.className = "flex-1 py-2.5 text-[#00e5ff] border-b-2 border-[#00e5ff] transition-all font-bold";
+                policeTab.className = "flex-1 py-2.5 text-slate-400 hover:text-white transition-all font-bold";
             } else {
                 pwdView.classList.add('hidden');
                 policeView.classList.remove('hidden');
-                policeTab.className = "flex-1 py-2 text-purple-400 border-b-2 border-purple-400";
-                pwdTab.className = "flex-1 py-2 text-slate-400 hover:text-white";
+                policeTab.className = "flex-1 py-2.5 text-[#a855f7] border-b-2 border-[#a855f7] transition-all font-bold";
+                pwdTab.className = "flex-1 py-2.5 text-slate-400 hover:text-white transition-all font-bold";
             }
         }
 
+        // Render Defect Inspection Card details
+        function renderDefectInspectionCard(d) {
+            currentSelectedDefectId = d.id;
+            
+            let statusColor = "text-[#f43f5e] bg-rose-950/40 border-rose-800/50";
+            if (d.status === 'AUDIT_PENDING') statusColor = "text-[#f59e0b] bg-amber-950/40 border-amber-800/50";
+            if (d.status === 'VERIFIED_FIXED') statusColor = "text-[#10b981] bg-emerald-950/40 border-emerald-800/50";
+            if (d.status === 'SLA_BREACH') statusColor = "text-[#a855f7] bg-purple-950/40 border-purple-800/50";
+
+            const severityPct = Math.min(100, Math.max(0, (d.severity_score / 10.0) * 100));
+
+            document.getElementById('defect-card').innerHTML = `
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center border-b border-[#1e293b] pb-2">
+                        <span class="font-extrabold text-[#00e5ff] text-sm">${d.id}</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${statusColor}">
+                            ${d.status}
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 text-slate-300 text-[11px] font-sans">
+                        <div>
+                            <span class="text-slate-500 block text-[10px]">Classification</span>
+                            <span class="font-mono font-bold text-white uppercase">${d.defect_type}</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block text-[10px]">Reporting Bus Node</span>
+                            <span class="font-mono text-cyan-300">${d.bus_id}</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-1 font-sans">
+                            <span class="text-slate-400">Fused Severity Score</span>
+                            <span class="font-mono font-bold text-amber-400">${d.severity_score} / 10</span>
+                        </div>
+                        <div class="w-full bg-[#0b1120] h-2 rounded-full overflow-hidden border border-[#1e293b]">
+                            <div class="bg-gradient-to-r from-amber-500 to-rose-500 h-full transition-all duration-500" style="width: ${severityPct}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 bg-[#0b1120] p-2 rounded border border-[#1e293b] text-[11px] font-mono">
+                        <div>
+                            <span class="text-slate-500 block text-[10px] font-sans">Vibro-Vision Shock</span>
+                            <span class="font-bold text-rose-400">${d.z_axis_g} G</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block text-[10px] font-sans">Deduplicated Passes</span>
+                            <span class="font-bold text-cyan-400">${d.detection_count} Passes</span>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 space-y-2">
+                        <button onclick="markRepaired('${d.id}')"
+                            class="w-full py-2 bg-[#f59e0b] hover:bg-amber-600 font-bold rounded text-slate-950 text-xs transition-colors shadow-md">
+                            ⚠️ Mark Repaired (Audit Watch)
+                        </button>
+                        <button onclick="verifyManual('${d.id}')"
+                            class="w-full py-2 bg-[#10b981] hover:bg-emerald-600 font-bold rounded text-white text-xs transition-colors shadow-md">
+                            ✔ Verify & Release Escrow
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Synchronize API telemetry & alerts with UI
         async function syncHubData() {
             try {
-                const res = await fetch('/api/v1/defects');
-                const data = await res.json();
-                document.getElementById('stat-hazards').innerText = data.total || 0;
+                // 1. Fetch defects telemetry
+                const defRes = await fetch('/api/v1/defects');
+                const defData = await defRes.json();
+                
+                const defectsList = defData.defects || [];
+                const openCount = defectsList.filter(d => d.status === 'OPEN' || d.status === 'SLA_BREACH').length;
+                document.getElementById('stat-hazards').innerText = openCount;
 
-                (data.defects || []).forEach(d => {
-                    let color = '#f43f5e';
-                    if (d.status === 'AUDIT_PENDING') color = '#f59e0b';
-                    if (d.status === 'VERIFIED_FIXED') color = '#10b981';
-                    if (d.status === 'SLA_BREACH') color = '#a855f7';
+                defectsList.forEach(d => {
+                    const icon = statusIcons[d.status] || statusIcons['OPEN'];
 
                     if (!defectMarkers[d.id]) {
-                        const marker = L.circleMarker([d.lat, d.lng], {
-                            radius: 9,
-                            fillColor: color,
-                            color: '#ffffff',
-                            weight: 1.5,
-                            fillOpacity: 0.9
-                        }).addTo(map);
+                        const marker = L.marker([d.lat, d.lng], { icon: icon }).addTo(map);
+
+                        marker.bindPopup(`
+                            <div class="text-xs font-mono p-1">
+                                <b class="text-[#00e5ff]">${d.id}</b><br/>
+                                Type: ${d.defect_type}<br/>
+                                Status: ${d.status}<br/>
+                                Severity: ${d.severity_score}
+                            </div>
+                        `);
 
                         marker.on('click', () => {
-                            document.getElementById('defect-card').innerHTML = `
-                                <div class="space-y-1.5 text-white">
-                                    <div class="flex justify-between items-center border-b border-slate-800 pb-1">
-                                        <span class="font-bold text-cyan-400">${d.id}</span>
-                                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800">${d.status}</span>
-                                    </div>
-                                    <p><b>Type:</b> ${d.defect_type}</p>
-                                    <p><b>Severity Score:</b> ${d.severity_score} / 10</p>
-                                    <p><b>Vibro-Vision Shock:</b> ${d.z_axis_g} G</p>
-                                    <p><b>Deduplicated Passes:</b> ${d.detection_count}</p>
-                                    <div class="pt-2 space-y-1.5">
-                                        <button onclick="markRepaired('${d.id}')" class="w-full py-1.5 bg-amber-600 hover:bg-amber-500 font-bold rounded text-white text-xs">
-                                            ⚠️ Mark Repaired (Audit Watch)
-                                        </button>
-                                        <button onclick="verifyManual('${d.id}')" class="w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 font-bold rounded text-white text-xs">
-                                            ✔ Verify & Release Escrow
-                                        </button>
-                                    </div>
-                                </div>
-                            `;
+                            switchAgencyTab('pwd');
+                            renderDefectInspectionCard(d);
                         });
+
                         defectMarkers[d.id] = marker;
                     } else {
-                        defectMarkers[d.id].setStyle({ fillColor: color });
+                        defectMarkers[d.id].setLatLng([d.lat, d.lng]);
+                        defectMarkers[d.id].setIcon(icon);
+                    }
+
+                    if (currentSelectedDefectId === d.id) {
+                        renderDefectInspectionCard(d);
                     }
                 });
+
+                // 2. Fetch Police ANPR alerts
+                const polRes = await fetch('/api/v1/police/alerts');
+                const polData = await polRes.json();
+                const alertsList = polData.alerts || [];
+
+                const anprListEl = document.getElementById('anpr-list');
+                if (alertsList.length === 0) {
+                    anprListEl.innerHTML = `<p class="text-slate-500 text-[11px] italic font-sans">No active search warrants registered.</p>`;
+                } else {
+                    anprListEl.innerHTML = alertsList.map(a => {
+                        const isIntercepted = a.status === 'INTERCEPTED';
+                        const badgeColor = isIntercepted 
+                            ? 'text-[#a855f7] bg-purple-950/40 border-purple-800' 
+                            : 'text-[#f59e0b] bg-amber-950/40 border-amber-800';
+
+                        // Render target marker on map if intercepted
+                        if (isIntercepted && a.last_lat && a.last_lng) {
+                            if (!anprMarkers[a.plate_number]) {
+                                const targetMarker = L.marker([a.last_lat, a.last_lng], {
+                                    icon: createTargetIcon()
+                                }).addTo(map);
+
+                                targetMarker.bindPopup(`
+                                    <div class="text-xs font-mono p-1 text-purple-300">
+                                        🚨 <b>TARGET INTERCEPTED</b><br/>
+                                        Plate: ${a.plate_number}<br/>
+                                        Warrant: ${a.incident_type}<br/>
+                                        Spotted by: ${a.last_seen_by || 'BUS-NODE'}
+                                    </div>
+                                `);
+                                anprMarkers[a.plate_number] = targetMarker;
+                            } else {
+                                anprMarkers[a.plate_number].setLatLng([a.last_lat, a.last_lng]);
+                            }
+                        }
+
+                        return `
+                            <div class="bg-[#050814] border border-[#1e293b] p-2.5 rounded font-mono space-y-1">
+                                <div class="flex justify-between items-center">
+                                    <span class="font-bold text-white text-xs">${a.plate_number}</span>
+                                    <span class="px-1.5 py-0.5 rounded text-[9px] font-bold border ${badgeColor}">
+                                        ${a.status}
+                                    </span>
+                                </div>
+                                <div class="text-[10px] text-slate-400 font-sans">
+                                    <span>Reason: ${a.incident_type}</span>
+                                    ${a.last_seen_by ? `<br/><span class="text-purple-400">Spotted by: ${a.last_seen_by}</span>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+            } catch (err) {
+                console.error("Dashboard sync error:", err);
+            }
+        }
+
+        // Action Trigger Handlers
+        async function markRepaired(id) {
+            try {
+                await fetch('/api/v1/defects/' + id + '/mark_repaired', { method: 'POST' });
+                await syncHubData();
             } catch (err) {
                 console.error(err);
             }
         }
 
-        async function markRepaired(id) {
-            await fetch('/api/v1/defects/' + id + '/mark_repaired', { method: 'POST' });
-            syncHubData();
-        }
-
         async function verifyManual(id) {
-            await fetch('/api/v1/defects/' + id + '/verify_manual', { method: 'POST' });
-            syncHubData();
+            try {
+                await fetch('/api/v1/defects/' + id + '/verify_manual', { method: 'POST' });
+                await syncHubData();
+            } catch (err) {
+                console.error(err);
+            }
         }
 
         async function broadcastPlateAlert() {
-            const plate = document.getElementById('anpr-plate').value.trim();
-            const reason = document.getElementById('anpr-reason').value.trim();
+            const plateInput = document.getElementById('anpr-plate');
+            const reasonInput = document.getElementById('anpr-reason');
+            const plate = plateInput.value.trim().toUpperCase();
+            const reason = reasonInput.value.trim();
+
             if (!plate) return;
 
-            await fetch('/api/v1/police/flag_vehicle', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ plate_number: plate, incident_type: reason || 'Suspect Vehicle' })
-            });
-            document.getElementById('anpr-plate').value = '';
-            document.getElementById('anpr-reason').value = '';
-            syncHubData();
+            try {
+                await fetch('/api/v1/police/flag_vehicle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plate_number: plate, incident_type: reason || 'Suspect Vehicle' })
+                });
+                plateInput.value = '';
+                reasonInput.value = '';
+                switchAgencyTab('police');
+                await syncHubData();
+            } catch (err) {
+                console.error(err);
+            }
         }
 
+        // Start 2000ms background polling loop
         setInterval(syncHubData, 2000);
         syncHubData();
     </script>
 </body>
-
 </html>
